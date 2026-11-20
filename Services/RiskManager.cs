@@ -8,13 +8,13 @@ public class RiskManager
     // Ogni trade investe un importo fisso in $ (positionValue) e non c'è limite al numero di trade aperti.
     private readonly decimal _positionValue;
     private readonly decimal _minRewardRatio;
-    private readonly decimal _commissionsPercent;
+    private readonly decimal _commissionPerTransaction; // commissione fissa per ogni operazione (ingresso o uscita)
     private readonly decimal _taxRate;
 
     public RiskManager(
         decimal positionValue,
         decimal rewardRiskRatio = 2.0m,
-        decimal commissionsPercent = 0.10m,
+        decimal commissionPerTransaction = 1.0m,
         decimal taxRate = 0.26m)
     {
         if (positionValue <= 0)
@@ -22,7 +22,7 @@ public class RiskManager
 
         _positionValue = positionValue;
         _minRewardRatio = rewardRiskRatio;
-        _commissionsPercent = commissionsPercent;
+        _commissionPerTransaction = commissionPerTransaction;
         _taxRate = taxRate;
     }
 
@@ -66,7 +66,7 @@ public class RiskManager
 
         // 4️⃣ Verifica che il profitto atteso copra commissioni
         var expectedProfit = positionSize * profitPerUnit;
-        var commissionsOnTrade = (entryPrice * positionSize * _commissionsPercent / 100) * 2; // Entry + Exit
+        var commissionsOnTrade = _commissionPerTransaction * 2; // Entry + Exit
         var netProfit = expectedProfit - commissionsOnTrade;
 
         if (netProfit <= 0)
@@ -116,8 +116,8 @@ public class RiskManager
         var profitLoss = priceChange * positionSize;
 
         // Commissioni (entry + exit)
-        var entryCommission = (entryPrice * positionSize * _commissionsPercent / 100);
-        var exitCommission = (exitPrice * positionSize * _commissionsPercent / 100);
+        var entryCommission = _commissionPerTransaction;
+        var exitCommission = _commissionPerTransaction;
         var totalCommissions = entryCommission + exitCommission;
 
         // Profitto netto prima tasse
@@ -166,11 +166,7 @@ public class RiskManager
 
         // Profitto totale
         metrics.TotalProfit = closedTrades.Sum(t => t.Profit ?? 0);
-        metrics.TotalCommissions = closedTrades.Sum(t =>
-        {
-            var commissions = (t.EntryPrice * t.PositionSize * _commissionsPercent / 100) * 2;
-            return commissions;
-        });
+        metrics.TotalCommissions = closedTrades.Count * _commissionPerTransaction * 2;
 
         // Average win/loss
         if (winningTrades.Count > 0)

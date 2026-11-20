@@ -21,7 +21,7 @@ public class BotSchedulerService
     private DateTime? _lastScannedCandle;
     // Il controllo gira spesso rispetto alla chiusura delle candele giornaliere: la seduta appena chiusa viene analizzata
     // al primo ciclo in cui Yahoo Finance la pubblica. La scansione dei simboli avviene una sola volta per seduta.
-    private static readonly TimeSpan CheckInterval = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan CheckInterval = TimeSpan.FromMinutes(20);
 
     private readonly string _timeframe;
     private readonly TimeSpan _timeframeSpan;

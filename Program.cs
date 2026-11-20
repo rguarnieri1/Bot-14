@@ -6,7 +6,7 @@ using Newtonsoft.Json.Linq;
 // In esecuzione normale il bot scrive solo a schermo: nessun file cycles_yyyy-MM-dd.log.
 if (Environment.GetCommandLineArgs().Skip(1).FirstOrDefault()?.StartsWith("--backtest", StringComparison.OrdinalIgnoreCase) == true)
     FileLogger.Install(Path.Combine(AppContext.BaseDirectory, "Logs"), "backtest");
-Console.WriteLine($"▶️  Avvio Bot 11 - {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC - eseguibile in {AppContext.BaseDirectory}");
+Console.WriteLine($"▶️  Avvio Bot 14 - {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC - eseguibile in {AppContext.BaseDirectory}");
 
 // Qualsiasi errore che chiude il processo viene scritto a schermo, così si sa perché il bot si è fermato
 AppDomain.CurrentDomain.UnhandledException += (_, e) =>
@@ -17,13 +17,13 @@ TaskScheduler.UnobservedTaskException += (_, e) =>
     e.SetObserved();
 };
 AppDomain.CurrentDomain.ProcessExit += (_, _) =>
-    Console.WriteLine($"⏹️  Bot 11 terminato - {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
+    Console.WriteLine($"⏹️  Bot 14 terminato - {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
 Console.CancelKeyPress += (_, _) =>
     Console.WriteLine("⏹️  Chiusura richiesta con Ctrl+C");
 
 Console.WriteLine(@"
 ╔════════════════════════════════════════════════════════╗
-║       🤖 BOT 11 - ERTF - AZIONI USA (Yahoo Finance)    ║
+║       🤖 BOT 14 - ERTF - AZIONI USA (Yahoo Finance)    ║
 ║                 Backtest + Live Trading                ║
 ╚════════════════════════════════════════════════════════╝
 ");
@@ -108,9 +108,9 @@ async Task RunLiveAsync()
     var scheduler = new BotSchedulerService(Timeframe, RewardRiskRatio, CapitalPerTrade);
 
     Console.WriteLine("Strategia Principale Attiva:");
-    Console.WriteLine("  ⭐ EMA Ribbon Trend Following + Candle Confirmation");
-    Console.WriteLine($"     • Configurazione: EMA 5, 10, 20, 30 su candele {Timeframe}");
-    Console.WriteLine("     • Filtri: Volume, Candle Body, RSI, Breakout Confirmation, Regime di mercato (SPY vs EMA50)");
+    Console.WriteLine("  ⭐ Swing Trading Short (solo posizioni short)");
+    Console.WriteLine($"     • Configurazione: EMA 20/50, RSI 14, ATR 14 su candele {Timeframe}");
+    Console.WriteLine("     • Setup: trend ribassista, rimbalzo sull'EMA20, ripartenza al ribasso; short solo con SPY sotto EMA50");
     Console.WriteLine("     • Modalità: paper trading (segnali e trade simulati, nessun ordine reale)");
     Console.WriteLine("\nImpostazioni:");
     Console.WriteLine("  • Dati: Yahoo Finance (YFSharp), azioni USA più grandi per capitalizzazione (candele giornaliere)");

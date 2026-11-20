@@ -26,7 +26,7 @@ public class SyntheticBacktest
         decimal expectedWinRate = 0.55m,
         int tradesPerSymbol = 8)
     {
-        Console.WriteLine($"\n🔍 BACKTEST SINTETICO - BOT 11 AZIONI USA");
+        Console.WriteLine($"\n🔍 BACKTEST SINTETICO - BOT 14 AZIONI USA");
         Console.WriteLine($"⏱️  Periodo: Ultimi {daysOfData} giorni");
         Console.WriteLine($"🪙 Simboli: {numSymbols}");
         Console.WriteLine($"📊 Trade per simbolo: {tradesPerSymbol}");
@@ -125,7 +125,7 @@ public class SyntheticBacktest
                     CloseTime = closeTime,
                     EntryPrice = entryPrice,
                     ExitPrice = exitPrice,
-                    Strategy = "EMA Ribbon Trend Following (Primary)",
+                    Strategy = "Swing Trading Short (Primary)",
                     Status = "Closed",
                     Profit = exitPrice - entryPrice,
                     ProfitPercentage = ((exitPrice - entryPrice) / entryPrice) * 100
@@ -143,7 +143,7 @@ public class SyntheticBacktest
     public void PrintBacktestReport(SyntheticBacktestResult result)
     {
         Console.WriteLine("\n" + new string('═', 90));
-        Console.WriteLine("📊 SYNTHETIC BACKTEST REPORT - BOT 11 AZIONI USA");
+        Console.WriteLine("📊 SYNTHETIC BACKTEST REPORT - BOT 14 AZIONI USA");
         Console.WriteLine(new string('═', 90));
 
         Console.WriteLine($"\n📅 PERIODO TEST:");
@@ -176,7 +176,7 @@ public class SyntheticBacktest
         Console.WriteLine($"\n📊 STRATEGY DISTRIBUTION:");
         var emaCount = result.Trades.Count(t => t.Strategy.Contains("EMA"));
         if (result.Trades.Count > 0)
-            Console.WriteLine($"   • EMA Ribbon Trend Following: {emaCount} ({(decimal)emaCount / result.Trades.Count * 100:F1}%)");
+            Console.WriteLine($"   • Swing Trading Short: {emaCount} ({(decimal)emaCount / result.Trades.Count * 100:F1}%)");
 
         Console.WriteLine($"\n📈 ANNUALIZED METRICS:");
         var annualizedROI = result.Metrics.ROI * (365m / result.DaysOfData);
@@ -242,7 +242,7 @@ public class SyntheticBacktest
 
             using (var writer = new StreamWriter(filePath))
             {
-                writer.WriteLine("SYNTHETIC BACKTEST REPORT - BOT 11 AZIONI USA");
+                writer.WriteLine("SYNTHETIC BACKTEST REPORT - BOT 14 AZIONI USA");
                 writer.WriteLine($"Generated: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
                 writer.WriteLine("");
                 writer.WriteLine($"Period: {result.DaysOfData} days");

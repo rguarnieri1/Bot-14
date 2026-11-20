@@ -24,6 +24,8 @@ public enum RejectionReason
     PriceVsEma10,
     RsiExtreme,
     NoBreakout,
+    NoPullback,
+    NoReversal,
     AgainstMarketRegime,
     MaxConcurrentTrades,
     ProfitBelowCommissions,

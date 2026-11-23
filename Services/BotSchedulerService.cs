@@ -126,6 +126,7 @@ public class BotSchedulerService
             // I simboli dei trade aperti vengono caricati anche se usciti dall'elenco delle azioni più liquide.
             var openTradeSymbols = _reportingService.GetAllTrades().Where(t => t.Status == "Open" && t.IsPaperManaged).Select(t => t.Symbol).ToList();
             await _dataService.LoadAsync(now.Date.AddDays(-HistoryCalendarDays), now, extraSymbols: openTradeSymbols);
+            await IsinService.PrefetchAsync(openTradeSymbols); // ISIN salvato alla chiusura dei trade aperti
             List<Candle> GetCandles(string symbol) => _dataService.GetCandles(symbol, CandlesPerAnalysis);
 
             // 1) Paper trading: chiudi i trade aperti che hanno toccato stop loss o target
@@ -171,7 +172,7 @@ public class BotSchedulerService
                 // Regime di mercato (SPY sopra/sotto la EMA50) sulla seduta appena chiusa: filtro direzionale della strategia
                 var marketBullish = SwingTradingShortStrategy.IsMarketBullish(marketClosed);
                 Console.WriteLine($"🕯️  Seduta del {lastClosedTime:yyyy-MM-dd} chiusa: ricerca segnali");
-                Console.WriteLine($"📊 Regime di mercato ({YahooDataService.MarketSymbol}): {(marketBullish == null ? "sconosciuto (nessun segnale)" : marketBullish.Value ? "rialzista (nessuno short)" : "ribassista (solo short)")}");
+                Console.WriteLine($"📊 Regime di mercato ({YahooDataService.MarketSymbol}): {(marketBullish == null ? "sconosciuto (nessun segnale)" : marketBullish.Value ? (StrategyOptions.Direction == 0 ? "rialzista (nessuno short)" : "rialzista (solo long)") : (StrategyOptions.Direction == 1 ? "ribassista (nessun long)" : "ribassista (solo short)"))}");
                 cycle.BtcRegime = marketBullish == null ? "Sconosciuto" : marketBullish.Value ? "Rialzista" : "Ribassista";
 
                 _lastScannedCandle = lastClosedTime;
@@ -229,10 +230,13 @@ public class BotSchedulerService
                     }
                 }
 
+                // ISIN dei simboli con segnale (EODHD, in cache su disco), scritto nei segnali e nei trade salvati
+                await IsinService.PrefetchAsync(candidates.Select(c => c.symbol));
+
                 // Dal segnale più forte al più debole (capitale illimitato: entrano tutti i segnali validi)
                 foreach (var (symbol, analysisResult, candles) in candidates.OrderByDescending(c => c.analysis.Indicators.GetValueOrDefault("SignalStrength")))
                 {
-                    var isLong = false;
+                    var isLong = analysisResult.Indicators.GetValueOrDefault("IsLong") == 1m;
                     // Ingresso alla chiusura della candela del segnale (come nel backtest), non al prezzo live:
                     // lo stop della strategia è calcolato su quella candela e i controlli stop/target partono dalla successiva.
                     var entryPrice = candles.Last().Close;
@@ -266,7 +270,7 @@ public class BotSchedulerService
                     var trade = _reportingService.RecordTrade(
                         symbol,
                         entryPrice,
-                        "Swing Trading Short (Primary)",
+                        isLong ? "Swing Trading Long (Primary)" : "Swing Trading Short (Primary)",
                         isLong,
                         positionResult.StopLossPrice,
                         positionResult.TargetPrice,
@@ -418,15 +422,15 @@ public class BotSchedulerService
     private static string RejectionLabel(RejectionReason reason) => reason switch
     {
         RejectionReason.InsufficientData => "Strategia: dati insufficienti per il calcolo",
-        RejectionReason.TrendNotAligned => "Strategia: nessun trend ribassista (Close<EMA50, EMA20<EMA50)",
+        RejectionReason.TrendNotAligned => "Strategia: trend del titolo non allineato (EMA50/EMA20) o filtri di prezzo",
         RejectionReason.NoVolumeData => "Strategia: volume assente",
         RejectionReason.VolumeInsufficient => "Strategia: volume insufficiente",
         RejectionReason.CandleNotStrong => "Strategia: candela non abbastanza forte",
         RejectionReason.PriceVsEma10 => "Strategia: prezzo non conferma vs EMA10",
         RejectionReason.RsiExtreme => "Strategia: RSI estremo",
         RejectionReason.NoBreakout => "Strategia: nessun breakout EMA confermato",
-        RejectionReason.NoPullback => "Strategia: nessun rimbalzo recente sull'EMA20",
-        RejectionReason.NoReversal => "Strategia: nessuna ripartenza al ribasso",
+        RejectionReason.NoPullback => "Strategia: nessun ritracciamento recente sull'EMA20",
+        RejectionReason.NoReversal => "Strategia: nessuna ripartenza nella direzione del trade",
         RejectionReason.AgainstMarketRegime => "Strategia: contro il regime di mercato (SPY)",
         RejectionReason.MaxConcurrentTrades => "Risk Manager: troppi trade aperti simultaneamente",
         RejectionReason.ProfitBelowCommissions => "Risk Manager: profitto non copre commissioni",

@@ -16,6 +16,7 @@ BEGIN
         [Id]               bigint IDENTITY(1,1) NOT NULL,
         [TradeId]          nvarchar(36)    NOT NULL, -- "ID" = bot14.bot14_trades.Id
         [Symbol]           nvarchar(50)    NULL,     -- "Simbolo"
+        [Isin]             nvarchar(12)    NULL,     -- codice ISIN (EODHD)
         [Strategy]         nvarchar(200)   NULL,     -- "Strategia"
         [IsLong]           bit             NOT NULL, -- "Direzione": 1 = LONG, 0 = SHORT
         [StopLoss]         decimal(38, 18) NULL,     -- "Stop Loss"

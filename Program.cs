@@ -1,10 +1,14 @@
 using BotCripto.Data;
 using BotCripto.Services;
+using BotCripto.Strategies;
 using Newtonsoft.Json.Linq;
 
-// Log su file dell'output solo per i backtest (Logs/backtest_yyyy-MM-dd.log).
+bool quietBacktest = false;
+
+// Log su file dell'output solo per i backtest (Logs/backtest_yyyy-MM-dd.log); con --quiet (ottimizzazione) niente file.
 // In esecuzione normale il bot scrive solo a schermo: nessun file cycles_yyyy-MM-dd.log.
-if (Environment.GetCommandLineArgs().Skip(1).FirstOrDefault()?.StartsWith("--backtest", StringComparison.OrdinalIgnoreCase) == true)
+if (Environment.GetCommandLineArgs().Skip(1).FirstOrDefault()?.StartsWith("--backtest", StringComparison.OrdinalIgnoreCase) == true
+    && !Environment.GetCommandLineArgs().Contains("--quiet"))
     FileLogger.Install(Path.Combine(AppContext.BaseDirectory, "Logs"), "backtest");
 Console.WriteLine($"▶️  Avvio Bot 14 - {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC - eseguibile in {AppContext.BaseDirectory}");
 
@@ -78,9 +82,18 @@ else if (isRealBacktestMode)
             symbolsFile = cmdArgs[++a];
         else if (cmdArgs[a] == "--rr" && a + 1 < cmdArgs.Length)
             rewardRisk = decimal.Parse(cmdArgs[++a], System.Globalization.CultureInfo.InvariantCulture);
+        else if (cmdArgs[a] == "--set" && a + 1 < cmdArgs.Length)
+            StrategyOptions.Apply(cmdArgs[++a]);   // es. --set RsiPullback=50,TrailAtr=2
+        else if (cmdArgs[a] == "--dump" && a + 1 < cmdArgs.Length)
+            StrategyOptions.DumpPath = cmdArgs[++a];
+        else if (cmdArgs[a] == "--quiet")
+            quietBacktest = true;
         else
             positional.Add(cmdArgs[a]);
     }
+
+    if (StrategyOptions.RewardRisk > 0)
+        rewardRisk = StrategyOptions.RewardRisk;
 
     var endDate = DateTime.UtcNow;
     var startDate = endDate.AddDays(-30);
@@ -108,9 +121,11 @@ async Task RunLiveAsync()
     var scheduler = new BotSchedulerService(Timeframe, RewardRiskRatio, CapitalPerTrade);
 
     Console.WriteLine("Strategia Principale Attiva:");
-    Console.WriteLine("  ⭐ Swing Trading Short (solo posizioni short)");
+    Console.WriteLine(StrategyOptions.Direction == 0 ? "  ⭐ Swing Trading Short (solo posizioni short)" : "  ⭐ Swing Trading Long (solo posizioni long)");
     Console.WriteLine($"     • Configurazione: EMA 20/50, RSI 14, ATR 14 su candele {Timeframe}");
-    Console.WriteLine("     • Setup: trend ribassista, rimbalzo sull'EMA20, ripartenza al ribasso; short solo con SPY sotto EMA50");
+    Console.WriteLine(StrategyOptions.Direction == 0
+        ? "     • Setup: trend ribassista, rimbalzo sull'EMA20, ripartenza al ribasso; short solo con SPY sotto EMA50"
+        : "     • Setup: trend rialzista, ritracciamento sull'EMA20, ripartenza al rialzo; long solo con SPY sopra EMA50; stop sotto il minimo a 20 giorni, stop minimo 8%");
     Console.WriteLine("     • Modalità: paper trading (segnali e trade simulati, nessun ordine reale)");
     Console.WriteLine("\nImpostazioni:");
     Console.WriteLine("  • Dati: Yahoo Finance (YFSharp), azioni USA più grandi per capitalizzazione (candele giornaliere)");
@@ -158,7 +173,20 @@ async Task RunRealBacktestAsync(DateTime startDate, DateTime endDate, string tim
             File.WriteAllLines(symbolsFile!, result.Symbols);
             Console.WriteLine($"📄 Elenco simboli salvato in {symbolsFile}");
         }
-        backtestService.PrintBacktestReport(result);
+        if (quietBacktest)
+        {
+            // Riga di riepilogo per l'ottimizzazione: P&L netto di commissioni e tasse (26% sul saldo netto positivo)
+            decimal Net(IEnumerable<BotCripto.Models.Trade> ts) { var g = ts.Sum(t => t.Profit ?? 0); return g > 0 ? g * (1 - 0.26m) : g; }
+            var closed = result.Trades.Where(t => t.Status == "Closed").ToList();
+            var split = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+            var h1 = closed.Where(t => t.CloseTime < split).ToList();
+            var h2 = closed.Where(t => t.CloseTime >= split).ToList();
+            var wins = closed.Where(t => t.Profit > 0).Sum(t => t.Profit ?? 0);
+            var losses = Math.Abs(closed.Where(t => t.Profit <= 0).Sum(t => t.Profit ?? 0));
+            Console.WriteLine($"SUMMARY|{StrategyOptions.Describe()}|trades={closed.Count}|net={Net(closed):F2}|gross={closed.Sum(t => t.Profit ?? 0):F2}|pf={(losses > 0 ? wins / losses : 0):F2}|win={(closed.Count > 0 ? (decimal)closed.Count(t => t.Profit > 0) / closed.Count * 100 : 0):F1}|h1net={Net(h1):F2}|h1n={h1.Count}|h2net={Net(h2):F2}|h2n={h2.Count}|dd={result.MaxDrawdownAmount:F2}");
+        }
+        else
+            backtestService.PrintBacktestReport(result);
     }
     catch (Exception ex)
     {

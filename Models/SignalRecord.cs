@@ -6,6 +6,7 @@ public class SignalRecord
 {
     public long Id { get; set; }
     public string Symbol { get; set; } = "";
+    public string? Isin { get; set; }          // codice ISIN (EODHD)
     public string? Strategy { get; set; }
     public string? Signal { get; set; }
     public bool IsLong { get; set; }

@@ -53,6 +53,10 @@ public class Trade
     [JsonProperty("Symbol")]
     public string Symbol { get; set; }
 
+    // Codice ISIN dell'azione (EODHD, vedi IsinService); null se non disponibile
+    [JsonProperty("Isin")]
+    public string? Isin { get; set; }
+
     [JsonProperty("OpenTime")]
     public DateTime OpenTime { get; set; }
 

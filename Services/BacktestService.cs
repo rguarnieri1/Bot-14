@@ -6,7 +6,7 @@ namespace BotCripto.Services;
 
 public class BacktestService
 {
-    private const int WarmupCandles = SwingTradingShortStrategy.MinCandles; // candele minime richieste dalla strategia prima di poter generare segnali
+    private static int WarmupCandles => SwingTradingShortStrategy.MinCandles; // candele minime richieste dalla strategia prima di poter generare segnali
     private const int MinWarmupDays = 20; // storico minimo scaricato prima di startDate per il calcolo degli indicatori
     private const int LookbackCandles = 300; // candele passate alla strategia a ogni passo (come nel download standard)
 
@@ -19,6 +19,18 @@ public class BacktestService
         "1d" => TimeSpan.FromDays(1),
         _ => TimeSpan.FromHours(4)
     };
+
+    // Variabili d'ingresso (strategia + stato di SPY) in formato CSV, per l'analisi dei trade
+    private static string BuildFeatures(AnalysisResult a, List<Candle> market, DateTime time)
+    {
+        string F(string k) => a.Indicators.GetValueOrDefault(k).ToString("0.####", System.Globalization.CultureInfo.InvariantCulture);
+        var upTo = market.Where(c => c.Time <= time).Select(c => c.Close).ToList();
+        decimal Dist(int p) { var e = TechnicalIndicators.CalculateEMA(upTo, p); return e.Count == 0 ? 0 : upTo.Last() / e.Last() - 1; }
+        decimal Ret(int n) => upTo.Count > n ? upTo.Last() / upTo[upTo.Count - 1 - n] - 1 : 0;
+        string S(decimal v) => v.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture);
+        return string.Join(",", F("F_StopPct"), F("F_AtrPct"), F("F_Rsi"), F("F_Gap"), F("F_Ret10"), F("F_Ret20"), F("F_DistLow20"),
+            F("F_VolRatio"), F("F_BodyAtr"), F("F_DollarVol"), F("F_Price"), S(Dist(50)), S(Dist(200)), S(Ret(10)), S(Ret(20)));
+    }
 
     // Ultime LookbackCandles candele fino a idx incluso
     private static List<Candle> Window(List<Candle> candles, int idx)
@@ -62,7 +74,7 @@ public class BacktestService
         Console.WriteLine($"⏱️  Timeframe: {timeframe}");
 
         // Riscaldamento: almeno WarmupCandles + 60 candele del timeframe (1d → 120 giorni), minimo 20 giorni
-        var warmup = TimeSpan.FromTicks(Math.Max(TimeSpan.FromDays(MinWarmupDays).Ticks, TimeframeToTimeSpan(timeframe).Ticks * (WarmupCandles + 60)));
+        var warmup = TimeSpan.FromTicks(Math.Max(TimeSpan.FromDays(MinWarmupDays).Ticks, TimeframeToTimeSpan(timeframe).Ticks * (WarmupCandles + 60) * 3 / 2));
         var historyFrom = startDate - warmup;
 
         await _dataService.LoadAsync(historyFrom, endDate, requestedSymbols);
@@ -120,6 +132,7 @@ public class BacktestService
         // 2) Simulazione di portafoglio con capitale illimitato: ogni segnale valido apre una posizione
         //    di importo fisso; il drawdown è misurato sulla curva del P&L cumulato (realizzato + non realizzato).
         var openPositions = new Dictionary<string, OpenPosition>();
+        var dumpRows = new List<string>();
         decimal realizedPnl = 0m;
         decimal peakPnl = 0m;
         decimal maxDrawdownAmount = 0m;
@@ -138,6 +151,8 @@ public class BacktestService
             pos.Trade.ProfitPercentage = profitCalc.ProfitPercent;
 
             backtestResult.Trades.Add(pos.Trade);
+            if (pos.Features != null)
+                dumpRows.Add($"{pos.Trade.Symbol},{pos.Trade.OpenTime:yyyy-MM-dd},{time:yyyy-MM-dd},{pos.Trade.Profit?.ToString(System.Globalization.CultureInfo.InvariantCulture)},{pos.BarsHeld},{pos.Features}");
             realizedPnl += profitCalc.NetProfitBeforeTax;
             openPositions.Remove(symbol);
         }
@@ -164,14 +179,30 @@ public class BacktestService
 
                 // Se in una stessa candela vengono toccati entrambi, assumiamo lo stop loss (ipotesi conservativa)
                 if (hitStop || hitTarget)
+                {
                     ClosePosition(symbol, hitStop ? pos.StopLoss : pos.Target, time, !hitStop);
+                    continue;
+                }
+
+                pos.BarsHeld++;
+                // Stop trailing (solo short): segue la chiusura a X ATR, senza mai allontanarsi
+                if (StrategyOptions.TrailAtr > 0 && pos.Atr > 0)
+                {
+                    var trail = pos.IsLong ? candle.Close - StrategyOptions.TrailAtr * pos.Atr : candle.Close + StrategyOptions.TrailAtr * pos.Atr;
+                    if (pos.IsLong ? trail > pos.StopLoss : trail < pos.StopLoss)
+                        pos.StopLoss = trail;
+                }
+                // Uscita a tempo: chiusura alla chiusura della candela
+                if (StrategyOptions.MaxHoldDays > 0 && pos.BarsHeld >= StrategyOptions.MaxHoldDays)
+                    ClosePosition(symbol, candle.Close, time, false);
             }
 
             // b) Nuovi segnali (solo dentro la finestra richiesta), dal più forte al più debole:
             if (time >= startDate)
             {
                 var candidates = new List<(string symbol, Candle candle, AnalysisResult analysis)>();
-                foreach (var (symbol, candles) in candlesBySymbol)
+                // Short solo con regime ribassista: negli altri giorni si salta l'analisi di tutti i simboli
+                foreach (var (symbol, candles) in (StrategyOptions.Direction != 0 ? marketRegime.GetValueOrDefault(time) != null : marketRegime.GetValueOrDefault(time) == false || (StrategyOptions.IgnoreRegime && marketRegime.GetValueOrDefault(time) == true)) ? candlesBySymbol : new Dictionary<string, List<Candle>>())
                 {
                     if (openPositions.ContainsKey(symbol) || !indexBySymbol[symbol].TryGetValue(time, out var idx) || idx < WarmupCandles)
                         continue;
@@ -181,11 +212,14 @@ public class BacktestService
                         candidates.Add((symbol, candles[idx], analysis));
                 }
 
-                foreach (var (symbol, candle, analysis) in candidates.OrderByDescending(c => c.analysis.Indicators.GetValueOrDefault("SignalStrength")))
+                var ranked = candidates.OrderByDescending(c => c.analysis.Indicators.GetValueOrDefault("SignalStrength")).AsEnumerable();
+                if (StrategyOptions.MaxNewPerDay > 0)
+                    ranked = ranked.Take(StrategyOptions.MaxNewPerDay);
+                foreach (var (symbol, candle, analysis) in ranked)
                 {
                     totalSignals++;
 
-                    var isLong = false;
+                    var isLong = analysis.Indicators.GetValueOrDefault("IsLong") == 1m;
                     var sizing = _riskManager.CalculatePosition(
                         symbol,
                         candle.Close,
@@ -210,6 +244,8 @@ public class BacktestService
                         StopLoss = sizing.StopLossPrice,
                         Target = sizing.TargetPrice,
                         Size = sizing.PositionSize,
+                        Atr = analysis.Indicators.GetValueOrDefault("ATR"),
+                        Features = StrategyOptions.DumpPath == null ? null : BuildFeatures(analysis, marketCandles, time),
                         Trade = new Trade
                         {
                             Symbol = symbol,
@@ -247,6 +283,12 @@ public class BacktestService
             var lastCandle = candlesBySymbol[symbol].Last(c => c.Time <= endDate);
             ClosePosition(symbol, lastCandle.Close, lastCandle.Time, false);
             closedAtEnd++;
+        }
+
+        if (StrategyOptions.DumpPath != null)
+        {
+            var header = "symbol,open,close,profit,bars,stopPct,atrPct,rsi,gap,ret10,ret20,distLow20,volRatio,bodyAtr,dollarVol,price,spyDist50,spyDist200,spyRet10,spyRet20";
+            File.WriteAllLines(StrategyOptions.DumpPath, new[] { header }.Concat(dumpRows));
         }
 
         backtestResult.Metrics = _riskManager.CalculatePerformanceMetrics(backtestResult.Trades);
@@ -382,6 +424,9 @@ internal class OpenPosition
     public decimal StopLoss { get; set; }
     public decimal Target { get; set; }
     public decimal Size { get; set; }
+    public decimal Atr { get; set; }
+    public int BarsHeld { get; set; }
+    public string? Features { get; set; }
     public Trade Trade { get; set; } = new();
 }
 

@@ -14,6 +14,7 @@ BEGIN
     CREATE TABLE [bot14].[bot14_signals] (
         [Id]                 bigint IDENTITY(1,1) NOT NULL,
         [Symbol]             nvarchar(50)    NOT NULL,
+        [Isin]               nvarchar(12)    NULL,
         [Strategy]           nvarchar(200)   NULL,   -- StrategyName
         [Signal]             nvarchar(200)   NULL,   -- testo del segnale, es. BUY - EMA Ribbon Bullish
         [IsLong]             bit             NOT NULL,

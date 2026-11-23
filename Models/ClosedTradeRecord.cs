@@ -7,6 +7,7 @@ public class ClosedTradeRecord
     public long Id { get; set; }
     public string TradeId { get; set; } = "";   // bot14.bot14_trades.Id
     public string? Symbol { get; set; }
+    public string? Isin { get; set; }          // codice ISIN (EODHD)
     public string? Strategy { get; set; }
     public bool IsLong { get; set; }
     public decimal? StopLoss { get; set; }
@@ -24,6 +25,7 @@ public class ClosedTradeRecord
     {
         TradeId = t.Id,
         Symbol = t.Symbol,
+        Isin = t.Isin,
         Strategy = t.Strategy,
         IsLong = t.IsLong,
         StopLoss = t.StopLoss,

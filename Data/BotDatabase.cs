@@ -38,6 +38,7 @@ public static class BotDatabase
             var creator = db.GetService<IRelationalDatabaseCreator>();
             if (!creator.Exists())
                 creator.Create();
+            EnsureIsinColumns(db);
 
             using var conn = new SqlConnection(ConnectionString);
             conn.Open();
@@ -48,6 +49,26 @@ public static class BotDatabase
         {
             Console.WriteLine($"❌ Database non connesso: {ex.GetBaseException().Message}");
             return IsAvailable = false;
+        }
+    }
+
+    // Aggiunge la colonna Isin (nvarchar(12) NULL) alle tabelle esistenti che non l'hanno ancora.
+    // Con ALTER TABLE SQL Server la mette in fondo alla tabella; negli script crea-tabella-*.sql è subito dopo Symbol.
+    private static void EnsureIsinColumns(BotDbContext db)
+    {
+        foreach (var entity in db.Model.GetEntityTypes().Where(e => e.FindProperty("Isin") != null && e.GetTableName() != null))
+        {
+            var table = $"[{entity.GetSchema() ?? "dbo"}].[{entity.GetTableName()}]";
+            try
+            {
+                db.Database.ExecuteSqlRaw(
+                    $"IF OBJECT_ID(N'{table}', N'U') IS NOT NULL AND COL_LENGTH(N'{table}', N'Isin') IS NULL " +
+                    $"ALTER TABLE {table} ADD [Isin] nvarchar(12) NULL;");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️  Colonna Isin su {table}: {ex.GetBaseException().Message}");
+            }
         }
     }
 

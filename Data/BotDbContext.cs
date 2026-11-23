@@ -1,4 +1,5 @@
 using BotCripto.Models;
+using BotCripto.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace BotCripto.Data;
@@ -37,10 +38,20 @@ public class BotDbContext : DbContext
             if (entry.State is EntityState.Added or EntityState.Modified
                 && entry.Metadata.FindProperty(BotColumn) != null)
                 entry.Property(BotColumn).CurrentValue = BotName;
+
+        // Codice ISIN delle righe che non l'hanno ancora (se già scaricato da EODHD, vedi IsinService)
+        foreach (var entry in ChangeTracker.Entries())
+            if (entry.State is EntityState.Added or EntityState.Modified
+                && entry.Metadata.FindProperty(IsinColumn) != null
+                && entry.Metadata.FindProperty(SymbolColumn) != null
+                && entry.Property(IsinColumn).CurrentValue == null)
+                entry.Property(IsinColumn).CurrentValue = IsinService.GetCached(entry.Property(SymbolColumn).CurrentValue as string);
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
 
     private const string BotColumn = "Bot";
+    private const string IsinColumn = "Isin";
+    private const string SymbolColumn = "Symbol";
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -52,6 +63,7 @@ public class BotDbContext : DbContext
             e.HasKey(t => t.Id);
             e.Property(t => t.Id).HasMaxLength(36);
             e.Property(t => t.Symbol).HasMaxLength(50).IsRequired(false);
+            e.Property(t => t.Isin).HasMaxLength(12);
             e.Property(t => t.Strategy).HasMaxLength(200).IsRequired(false);
             e.Property(t => t.Status).HasMaxLength(20).IsRequired(false);
             e.Property(t => t.ExitReason).HasMaxLength(100);
@@ -73,6 +85,7 @@ public class BotDbContext : DbContext
             e.HasKey(s => s.Id);
             e.Property(s => s.Id).UseIdentityColumn();
             e.Property(s => s.Symbol).HasMaxLength(50);
+            e.Property(s => s.Isin).HasMaxLength(12);
             e.Property(s => s.Strategy).HasMaxLength(200);
             e.Property(s => s.Signal).HasMaxLength(200);
             e.Property(s => s.Timeframe).HasMaxLength(10);
@@ -95,6 +108,7 @@ public class BotDbContext : DbContext
             e.Property(c => c.Id).UseIdentityColumn();
             e.Property(c => c.TradeId).HasMaxLength(36);
             e.Property(c => c.Symbol).HasMaxLength(50);
+            e.Property(c => c.Isin).HasMaxLength(12);
             e.Property(c => c.Strategy).HasMaxLength(200);
             e.Property(c => c.ExitReason).HasMaxLength(100);
             e.Property(c => c.Status).HasMaxLength(20);

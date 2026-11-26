@@ -70,3 +70,4 @@ Data/yahoo/
 
 # Log degli script di creazione tabelle
 *-log.txt
+publish/
